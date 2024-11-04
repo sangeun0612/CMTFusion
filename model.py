@@ -25,7 +25,7 @@ class UpsampleReshape_eval(torch.nn.Module):
         bot = 0
         if shape_x1[3] != shape_x2[3]:
             lef_right = shape_x1[3] - shape_x2[3]
-            if lef_right%2 is 0.0:
+            if lef_right%2 == 0.0:
                 left = int(lef_right/2)
                 right = int(lef_right/2)
             else:
@@ -34,7 +34,7 @@ class UpsampleReshape_eval(torch.nn.Module):
 
         if shape_x1[2] != shape_x2[2]:
             top_bot = shape_x1[2] - shape_x2[2]
-            if top_bot%2 is 0.0:
+            if top_bot%2 == 0.0:
                 top = int(top_bot/2)
                 bot = int(top_bot/2)
             else:

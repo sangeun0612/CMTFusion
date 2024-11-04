@@ -3,49 +3,56 @@ from model import CMTFusion
 import torch
 from torchvision.utils import save_image
 import utils
-import argparse
 
+def fuse_images(model, ir_path, vis_path, output_path, device):
+    # IR 및 VIS 이미지 로드
+    real_ir_imgs = utils.get_test_images(ir_path).to(device)
+    real_rgb_imgs = utils.get_test_images(vis_path).to(device)
 
-def run():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--out_path', type=str, default='./fusion_outputs/', help='path of fused image')
-    parser.add_argument('--test_images', type=str, default='./test_image_roadscene/', help='path of source image')
-    parser.add_argument('--dataset_name', type=str, default='basic', help='dataset name')
-    parser.add_argument('--weights', type=str, default='0', help='dataset name')
-    args = parser.parse_args()
-
-    if os.path.exists(args.out_path) is False:
-        os.mkdir(args.out_path)
-
-    # device setting for gpu users
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    print("device: ", device)
-
-    fusion_model = torch.nn.DataParallel(CMTFusion(), device_ids=[0])
-    fusion_model.load_state_dict(
-        torch.load("saved_models/%s/model_fusion%s.pth" % (args.dataset_name, args.weights)))
-    print("===>Testing using weights: ", args.weights)
-    fusion_model.cuda()
-    fusion_model.eval()
-
+    # 모델을 사용하여 융합 이미지 생성
     with torch.no_grad():
-        for i in range(os.listdir(args.test_images)):
-            index = i + 1
-            infrared_path = args.test_images + 'IR' + str(index) + '.png'
-            visible_path = args.test_images + 'VIS' + str(index) + '.png'
-            print(index)
-            if os.path.isfile(infrared_path):
-                real_ir_imgs = utils.get_test_images(infrared_path, height=None, width=None)
-                real_rgb_imgs = utils.get_test_images(visible_path, height=None, width=None)
+        fused_img, _, _ = model(real_rgb_imgs, real_ir_imgs)
+        
+    # 융합된 이미지 저장
+    save_image(fused_img, output_path, normalize=True)
+    print(f"Saved fused image to: {output_path}")
 
-                torch.cuda.ipc_collect()
-                torch.cuda.empty_cache()
-                fused, fused2, fused3 = fusion_model(real_rgb_imgs.cuda(), real_ir_imgs.cuda())
-                # # save images
-                save_image(fused, "fusion_outputs/%d.png" % index, normalize=True)
+def run_fusion(ir_dir, vis_dir, output_dir):
+    # 모델 설정 및 가중치 로드
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = CMTFusion().to(device)
+    
+    # 가중치 로드 및 module. 접두사 제거
+    state_dict = torch.load('/content/drive/MyDrive/pretrained.pth', map_location=device)
+    from collections import OrderedDict
+    new_state_dict = OrderedDict()
+    for k, v in state_dict.items():
+        name = k[7:] if k.startswith("module.") else k  # module. 제거
+        new_state_dict[name] = v
+    model.load_state_dict(new_state_dict)
+    
+    model.eval()
 
-    print('Done......')
-
+    # 이미지 융합 수행
+    for idx in range(1, 201):
+        ir_path = os.path.join(ir_dir, f'IR{idx}.png')
+        vis_path = os.path.join(vis_dir, f'VIS{idx}.png')
+        output_path = os.path.join(output_dir, f'Fused_{idx}.png')
+        
+        # IR 및 VIS 이미지가 모두 있는 경우에만 융합 수행
+        if os.path.exists(ir_path) and os.path.exists(vis_path):
+            fuse_images(model, ir_path, vis_path, output_path, device)
+        else:
+            print(f"Image pair not found for index {idx}")
 
 if __name__ == '__main__':
-    run()
+    # 구글 드라이브의 IR 및 VIS 이미지 경로와 융합 결과 저장 경로 설정
+    ir_dir = '/content/drive/MyDrive/KAIST/IR'
+    vis_dir = '/content/drive/MyDrive/KAIST/VIS'
+    output_dir = '/content/drive/MyDrive/KAIST/Fused'
+    
+    # 융합 디렉터리 생성
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # 융합 실행
+    run_fusion(ir_dir, vis_dir, output_dir)
